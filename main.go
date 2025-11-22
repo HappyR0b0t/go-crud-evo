@@ -2,18 +2,16 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
+	"go-crud-evo/internal/handler"
+	"go-crud-evo/internal/repository"
+	"go-crud-evo/internal/service"
 	"log"
 	"net/http"
 	"os"
 
 	_ "github.com/lib/pq"
 )
-
-type NumberRequest struct {
-	Number int `json:"number"`
-}
 
 func main() {
 	dbHost := os.Getenv("DB_HOST")
@@ -31,55 +29,29 @@ func main() {
 	}
 	defer db.Close()
 
-	// Wait for DB to be ready (simple retry logic could be added here, but for now we rely on restart_policy or external wait)
-	// Actually, let's just try to ping.
+	// Wait for DB to be ready
 	if err = db.Ping(); err != nil {
 		log.Printf("Warning: Could not ping DB: %v", err)
 	}
 
+	// Initialize layers
+	// 1. Repository
+	numberRepo := repository.NewPostgresNumberRepository(db)
+
+	// 2. Service
+	numberService := service.NewDefaultNumberService(numberRepo)
+
+	// 3. Handler
+	numberHandler := handler.NewNumberHandler(numberService)
+
+	// Ensure table exists (could be moved to migration tool, but keeping here for simplicity as per original)
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS numbers (value INT)`)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		var req NumberRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		_, err = db.Exec("INSERT INTO numbers (value) VALUES ($1)", req.Number)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		rows, err := db.Query("SELECT value FROM numbers ORDER BY value ASC")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
-		var numbers []int
-		for rows.Next() {
-			var n int
-			if err := rows.Scan(&n); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			numbers = append(numbers, n)
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(numbers)
-	})
+	// Register routes
+	http.HandleFunc("/", numberHandler.Handle)
 
 	log.Println("Server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

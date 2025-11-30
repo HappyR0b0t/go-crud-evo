@@ -3,17 +3,23 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"go-crud-evo/internal/handler"
-	"go-crud-evo/internal/repository"
-	"go-crud-evo/internal/service"
+	"io"
 	"log"
 	"net/http"
 	"os"
 
+	"go-crud-practice/handlers"
+
 	_ "github.com/lib/pq"
 )
 
+func HelloHandler(w http.ResponseWriter, req *http.Request) {
+	io.WriteString(w, "hello world!")
+}
+
 func main() {
+	fmt.Println("hello world!")
+
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
@@ -25,34 +31,21 @@ func main() {
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("DB init error: %v", err)
 	}
 	defer db.Close()
 
-	// Wait for DB to be ready
-	if err = db.Ping(); err != nil {
-		log.Printf("Warning: Could not ping DB: %v", err)
+	if err := db.Ping(); err != nil {
+		log.Printf("failed to ping a db!: %v", err)
 	}
 
-	// Initialize layers
-	// 1. Repository
-	numberRepo := repository.NewPostgresNumberRepository(db)
-
-	// 2. Service
-	numberService := service.NewDefaultNumberService(numberRepo)
-
-	// 3. Handler
-	numberHandler := handler.NewNumberHandler(numberService)
-
-	// Ensure table exists (could be moved to migration tool, but keeping here for simplicity as per original)
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS numbers (value INT)`)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("failed to create a table: %v", err)
 	}
 
-	// Register routes
-	http.HandleFunc("/", numberHandler.Handle)
-
-	log.Println("Server starting on :8080")
+	handler := handlers.NewHandler(db)
+	http.HandleFunc("/hello", handler.HelloHandler)
+	http.HandleFunc("/number", handler.NumberHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

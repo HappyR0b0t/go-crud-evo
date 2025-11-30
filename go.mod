@@ -1,4 +1,4 @@
-module go-crud-evo
+module go-crud-practice
 
 go 1.23.0
 

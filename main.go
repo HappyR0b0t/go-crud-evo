@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -29,9 +30,19 @@ func main() {
 	}
 	defer db.Close()
 
-	// Wait for DB to be ready
-	if err = db.Ping(); err != nil {
-		log.Printf("Warning: Could not ping DB: %v", err)
+	var pingErr error
+	for i := 0; i < 10; i++ {
+		pingErr = db.Ping()
+		if pingErr == nil {
+			log.Println("Successfully connected to the database")
+			break
+		}
+		log.Printf("Attempt %d: failed to ping db, retrying in 2s...", i+1)
+		time.Sleep(2 * time.Second)
+	}
+
+	if pingErr != nil {
+		log.Fatalf("failed to ping db after multiple attempts: %v", pingErr)
 	}
 
 	// Initialize layers

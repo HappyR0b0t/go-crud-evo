@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"go-crud-practice/handlers"
 
@@ -35,8 +36,19 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
-		log.Printf("failed to ping a db!: %v", err)
+	var pingErr error
+	for i := 0; i < 10; i++ {
+		pingErr = db.Ping()
+		if pingErr == nil {
+			log.Println("Successfully connected to the database")
+			break
+		}
+		log.Printf("Attempt %d: failed to ping db, retrying in 2s...", i+1)
+		time.Sleep(2 * time.Second)
+	}
+
+	if pingErr != nil {
+		log.Fatalf("failed to ping db after multiple attempts: %v", pingErr)
 	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS numbers (value INT)`)
